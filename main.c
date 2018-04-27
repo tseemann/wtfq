@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <stdio.h>
 #include <zlib.h>
 #include <getopt.h>
@@ -23,8 +22,6 @@ KSEQ_INIT(gzFile, gzread)
 
 // warning: implicit declaration of function 'fileno' [-Wimplicit-function-declaration]
 int fileno(FILE *);
-void srand48(long int);
-double drand48(void);
 
 //------------------------------------------------------------------------
 void show_help(int retcode)
@@ -92,14 +89,12 @@ int main(int argc, char *argv[])
   // parse command line parameters
   int opt, quiet=0;
   double corr=DEFAULT_CORRECTION;
-  long seed=DEFAULT_SEED;
   
-  while ((opt = getopt(argc, argv, "hvqfc:s:")) != -1) {
+  while ((opt = getopt(argc, argv, "hvqfc:")) != -1) {
     switch (opt) {
       case 'h': show_help(EXIT_SUCCESS); break;
       case 'q': quiet=1; break;
       case 'c': corr=atof(argv[optind]); break;
-      case 's': seed=atol(argv[optind]); break;
       case 'v': printf("%s %s\n", EXENAME, VERSION); exit(EXIT_SUCCESS);
       default : show_help(EXIT_FAILURE);
     }
@@ -111,8 +106,6 @@ int main(int argc, char *argv[])
     exit(EXIT_FAILURE);
   }
 
-  // random seed
-  srand48(seed);
   if (!quiet) fprintf(stderr, "RUNNING : %s %s\n", EXENAME, VERSION);
 
   // open stdin or the file on commandline
