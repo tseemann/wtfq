@@ -30,10 +30,10 @@ double drand48(void);
 void show_help(int retcode)
 {
   FILE* out = (retcode == EXIT_SUCCESS ? stdout : stderr);
-  fprintf(out, "SYNOPSIS\n  Duplicate FASTQ reads to address undersequenced regions\n");
+  fprintf(out, "SYNOPSIS\n  Generate extra FASTQ reads for extreme-GC/undersequenced regions\n");
   fprintf(out, "USAGE\n");
-  fprintf(out, "  %s [options] old.fq.gz > new.fq\n", EXENAME);
-  fprintf(out, "  seqtk mergepe R1.fq.gz R2.fq.gz | %s - | seqtk dropse - | gzip > PE.fq.gz \n", EXENAME);
+  fprintf(out, "  %s [options] reads.fq.gz > extras.fq\n", EXENAME);
+  fprintf(out, "  seqtk mergepe R1.fq.gz R2.fq.gz | %s - | gzip > extras.fq.gz \n", EXENAME);
   fprintf(out, "OPTIONS\n");
   fprintf(out, "  -h        Show this help\n");
   fprintf(out, "  -v        Print version and exit\n");
@@ -48,7 +48,7 @@ void show_help(int retcode)
 }
 
 //------------------------------------------------------------------------
-double kseq_gc(kseq_t* r) {
+double kseq_gc(const kseq_t* r) {
   char* s = r->seq.s;
   size_t GC=0, N=0, Nbad=0;
   
@@ -71,6 +71,19 @@ double kseq_gc(kseq_t* r) {
 #endif
   
   return N==0 ? -1.0 : (GC / (double) N);
+}
+
+//------------------------------------------------------------------------
+
+void kseq_write_dupes(const kseq_t* s, int num, FILE* stream) 
+{
+  static int counter=0;
+  for (int i=0; i < num; i++) {
+    // if the length of the quality string is zero, it was fasta input
+    fputc( s->qual.l ? '@' : '>', stream);
+    fprintf(stream, "%s:%s-%d\n%s\n", s->name.s, EXENAME, counter++, s->seq.s);
+    if (s->qual.l) fprintf(stream, "+\n%s\n", s->qual.s);
+  }
 }
  
 //------------------------------------------------------------------------
@@ -100,6 +113,7 @@ int main(int argc, char *argv[])
 
   // random seed
   srand48(seed);
+  if (!quiet) fprintf(stderr, "RUNNING : %s %s\n", EXENAME, VERSION);
 
   // open stdin or the file on commandline
   FILE* input = NULL;
@@ -121,6 +135,7 @@ int main(int argc, char *argv[])
       fprintf(stderr, "ERROR: Could not open '%s'\n", seqfn);
       exit(EXIT_FAILURE);
     }
+    if (!quiet) fprintf(stderr, "READING : %s\n", input==stdin ? "stdin" : seqfn);
   }
 
   // open filehandle with zlib
@@ -134,37 +149,25 @@ int main(int argc, char *argv[])
   double gc_sum=0;
   kseq_t* kseq = kseq_init(fp);
  
- /*
-  *  NOTE THIS DOES NOT WORK PROPERLY YET
-  *  it duplicates the read
-  *  but this makes an extra singleton
-  *  which will be dropped by `seqtk dropse`
-  *  need to read this in a "paired" fashion and dupe the PAIR
-  */
-  
   while ((l = kseq_read(kseq)) >= 0) {    
 
-    int copies=1;
+    int copies=0;
     double gc = kseq_gc(kseq);
     if (gc >= 0) {  // no AGTCs in read   
       gc_sum += gc;
       double GC = gc_sum / (double) (N+1) ;
       double dev = -(gc-GC)/GC;
       if (dev > 0) {
-        copies = (int) (pow(GC/gc,corr) + 0.5);
-        //if (copies > 1)
-        //  fprintf(stderr, "%s\t%lf\t%lf\t%lf\t%d\n", kseq->name.s, gc, GC, dev, copies );
+        copies = (int) (pow(GC/gc,corr) + 0.5);  // invented formula w/ no evidence
+        if (copies <= 1) copies=0;
       }
     }
  
-    for (int count=0; count < copies; count++) {
-      if (count==0)
-        printf("@%s\n%s\n+\n%s\n", kseq->name.s, kseq->seq.s, kseq->qual.s);
-      else {
-        printf("@%s:DUP%d\n%s\n+\n%s\n", kseq->name.s, count, kseq->seq.s, kseq->qual.s);
-        D++;
-      }
+    if (copies > 0) {
+      kseq_write_dupes(kseq, copies, stdout);
+      D += copies;
     }
+
     // keep stats
     L += kseq->seq.l;
     N++;
@@ -174,8 +177,8 @@ int main(int argc, char *argv[])
 
   // reveal status
   if (!quiet) {
-    fprintf(stderr, "INPUT  : seqs=%ld bp=%ld avglen=%ld gc=%lf\n", N, L, L/N, gc_sum/N);
-    fprintf(stderr, "OUTPUT : seqs=%ld duped=%ld\n", N+D, D);
+    fprintf(stderr, "INPUT   : seqs=%ld bp=%ld avglen=%ld gc=%lf\n", N, L, L/N, gc_sum/N);
+    fprintf(stderr, "OUTPUT  : seqs=%ld\n", D);
   }
 
   return 0;
