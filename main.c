@@ -94,7 +94,7 @@ int main(int argc, char *argv[])
     switch (opt) {
       case 'h': show_help(EXIT_SUCCESS); break;
       case 'q': quiet=1; break;
-      case 'c': corr=atof(argv[optind]); break;
+      case 'c': corr=atof(optarg); break;
       case 'v': printf("%s %s\n", EXENAME, VERSION); exit(EXIT_SUCCESS);
       default : show_help(EXIT_FAILURE);
     }
